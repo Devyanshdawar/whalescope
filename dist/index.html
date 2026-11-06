@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhaleScope — Institutional-Grade Crypto Whale Watcher</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .animate-marquee {
+      display: inline-flex;
+      white-space: nowrap;
+      animation: marquee 35s linear infinite;
+    }
+    .animate-marquee:hover {
+      animation-play-state: paused;
+    }
+    .live-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background-color: #22d3ee;
+      box-shadow: 0 0 8px #22d3ee;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #080c14;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-300 min-h-screen flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- ========================================== -->
+  <!-- TOP HEADER & REAL-TIME MARQUEE STREAM      -->
+  <!-- ========================================== -->
+  <header class="sticky top-0 z-30 border-b border-white/[0.06] bg-[#0b0f19]/90 backdrop-blur-xl">
+    <div class="flex h-[72px] items-center gap-3 px-4 sm:px-6 xl:px-8">
+      <!-- Mobile menu trigger -->
+      <button onclick="toggleSidebar()" class="lg:hidden p-2 text-slate-400 hover:text-white rounded-lg border border-white/5 bg-white/[0.02]">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+
+      <!-- Search & ⌘K bar -->
+      <div class="flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 w-full max-w-md transition focus-within:border-blue-500/50 focus-within:bg-white/[0.05]">
+        <svg class="text-slate-500 shrink-0" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input
+          id="globalSearchInput"
+          type="text"
+          placeholder="Search wallet address, ENS or token..."
+          oninput="handleSearch(this.value)"
+          class="w-full bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none"
+        />
+        <button onclick="openModal('commandPaletteModal')" class="hidden sm:inline-flex items-center rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 hover:text-white">
+          ⌘K
+        </button>
+      </div>
+
+      <!-- Header actions & Profile -->
+      <div class="ml-auto flex items-center gap-3">
+        <!-- Live backend sync pill -->
+        <div id="backendStatusPill" class="hidden sm:flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-400">
+          <span class="live-dot !bg-emerald-400"></span>
+          <span>Node Backend Active</span>
+        </div>
+
+        <!-- Alert settings trigger -->
+        <button onclick="openModal('alertSettingsModal')" class="relative p-2 rounded-xl border border-white/5 bg-white/[0.02] text-slate-400 hover:text-white hover:bg-white/[0.05]" title="Alert & Webhook Settings">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span id="headerAlertBadge" class="absolute top-2 right-2 h-2 w-2 rounded-full bg-cyan-400 ring-2 ring-[#0b0f19]"></span>
+        </button>
+
+        <!-- Profile Menu -->
+        <div class="relative">
+          <button onclick="toggleProfileDropdown()" class="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 pr-3 hover:bg-white/[0.05]">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 text-[10px] font-bold text-white">AK</span>
+            <span class="hidden sm:block text-left leading-tight">
+              <span class="block text-[11px] font-semibold text-slate-200">Alex Kim</span>
+              <span id="headerTierText" class="block text-[9px] text-slate-500">Free tier</span>
+            </span>
+            <svg class="text-slate-500 hidden sm:block" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="profileDropdown" class="hidden absolute right-0 mt-2 w-52 rounded-xl border border-white/10 bg-[#0e1422] p-1.5 shadow-2xl z-50 text-xs">
+            <div class="px-3 py-2 border-b border-white/5">
+              <p class="font-semibold text-white">alex@whalescope.io</p>
+              <p class="text-[10px] text-slate-500">MetaMask Connected</p>
+            </div>
+            <button onclick="openModal('alertSettingsModal'); toggleProfileDropdown();" class="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.04] text-slate-300">Alert & Webhook Settings</button>
+            <button onclick="openModal('paywallModal'); toggleProfileDropdown();" class="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.04] text-slate-300">Upgrade to Pro ($49/mo)</button>
+            <button onclick="toggleDemoMode(); toggleProfileDropdown();" class="w-full text-left px-3 py-2 rounded-lg hover:bg-white/[0.04] text-cyan-400 font-semibold">Toggle Demo Mode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Marquee Ticker -->
+    <div class="flex h-9 items-center overflow-hidden border-t border-white/[0.04] bg-[#080c14]">
+      <div class="flex h-full shrink-0 items-center gap-2 border-r border-white/[0.06] bg-cyan-400/[0.04] px-4 text-[9px] font-bold uppercase tracking-[0.14em] text-cyan-400">
+        <span class="live-dot"></span>
+        Live Mempool
+      </div>
+      <div class="flex-1 overflow-hidden">
+        <div id="marqueeTrack" class="animate-marquee items-center gap-6 text-[10px] text-slate-400">
+          <!-- Marquee items injected dynamically -->
+          <span class="text-slate-500">Connecting to live Ethereum mempool stream...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================== -->
+  <!-- MAIN APP LAYOUT (SIDEBAR + CONTENT)        -->
+  <!-- ========================================== -->
+  <div class="flex flex-1">
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-[220px] bg-[#080c14] border-r border-white/[0.06] flex flex-col transition-transform -translate-x-full lg:translate-x-0">
+      <div class="flex h-[72px] items-center gap-3 px-6 border-b border-white/[0.06]">
+        <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center font-black text-white text-xs shadow-lg shadow-blue-500/30">
+          W
+        </div>
+        <div>
+          <span class="text-[15px] font-bold tracking-tight text-white">Whale<span class="text-cyan-400">Scope</span></span>
+          <span class="block text-[8px] font-semibold uppercase tracking-widest text-slate-500">Onchain OS</span>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-3 py-5 space-y-6">
+        <div>
+          <span class="px-3 text-[9px] font-bold uppercase tracking-wider text-slate-600">Workspace</span>
+          <nav class="mt-2 space-y-1">
+            <button onclick="setActiveNav('Dashboard')" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold bg-white/[0.05] text-white">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+              <span>Dashboard</span>
+            </button>
+            <button onclick="filterByTracked()" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03]">
+              <div class="flex items-center gap-3">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Watchlist</span>
+              </div>
+              <span id="sidebarTrackedBadge" class="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-400">0</span>
+            </button>
+            <button onclick="openModal('alertSettingsModal')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03]">
+              <div class="flex items-center gap-3">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span>Live Alerts</span>
+              </div>
+              <span class="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-400">Live</span>
+            </button>
+            <button onclick="openModal('paywallModal')" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03]">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <span>Pricing ($49/mo)</span>
+            </button>
+            <button onclick="openModal('alertSettingsModal')" class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03]">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Settings</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Pro Upsell Card -->
+        <div class="rounded-2xl border border-blue-500/20 bg-gradient-to-b from-blue-900/20 to-black/40 p-4 text-xs">
+          <div class="flex items-center gap-2 text-blue-400 font-bold">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Alpha Sentinel Pro
+          </div>
+          <p class="mt-1 text-[11px] text-slate-400">Unlock Tier-1 Jump & Wintermute wallets and Discord webhooks.</p>
+          <button onclick="openModal('paywallModal')" class="mt-3 w-full rounded-xl bg-blue-600 py-2 text-center font-bold text-white shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+            Upgrade — $49/mo
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 lg:pl-[220px] p-4 sm:p-6 xl:p-8 max-w-[1540px] mx-auto w-full">
+      <!-- Title & Action Bar -->
+      <div class="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <div class="mb-1.5 flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-500">
+            <span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+            Institutional-Grade Web3 Intelligence
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Smart Money Overview</h1>
+          <p class="mt-1 text-xs text-slate-400">Follow capital. Identify conviction. Move before the market.</p>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button onclick="syncData()" class="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 text-xs font-semibold text-slate-300 hover:bg-white/[0.06]">
+            <span class="live-dot animate-pulse"></span>
+            <span id="syncStatusText">Synced just now</span>
+          </button>
+          <button onclick="openModal('addWalletModal')" class="flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-500">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>
+            Add Wallet
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Stat Cards -->
+      <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="rounded-2xl border border-white/[0.06] bg-[#0d1320] p-5 shadow-xl">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span>Total Value Tracked</span>
+            <span class="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">+12.4%</span>
+          </div>
+          <div class="mt-2 text-2xl font-black text-white">$842.67M</div>
+          <div class="mt-1 text-[10px] text-slate-500">Aggregated across top institutional vaults</div>
+        </div>
+
+        <div class="rounded-2xl border border-white/[0.06] bg-[#0d1320] p-5 shadow-xl">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span>Active Whales Online</span>
+            <span class="text-cyan-400 font-bold bg-cyan-500/10 px-2 py-0.5 rounded-full">+8.7%</span>
+          </div>
+          <div class="mt-2 text-2xl font-black text-white">1,284</div>
+          <div class="mt-1 text-[10px] text-slate-500">168 active in mempool in last 24h</div>
+        </div>
+
+        <div class="rounded-2xl border border-white/[0.06] bg-[#0d1320] p-5 shadow-xl">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span>24h Smart Money Net Flow</span>
+            <span class="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">+22.1%</span>
+          </div>
+          <div class="mt-2 text-2xl font-black text-white">+$38.42M</div>
+          <div class="mt-1 text-[10px] text-slate-500">Net institutional accumulation</div>
+        </div>
+      </div>
+
+      <!-- Main Ledger & Sidebar Grid -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <!-- Top 100 Smart Wallets Ledger Table -->
+        <div class="xl:col-span-8 rounded-2xl border border-white/[0.06] bg-[#0d1320] overflow-hidden shadow-2xl">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.06] p-5">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-white">Top Smart Wallets Ledger</h2>
+                <span class="rounded bg-blue-500/15 px-2 py-0.5 text-[9px] font-bold text-blue-400">TOP 100</span>
+              </div>
+              <p class="mt-0.5 text-[10px] text-slate-500">Ranked by realized P&L, win rate and onchain conviction</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="flex rounded-xl border border-white/10 bg-black/40 p-1 text-xs">
+                <button id="filterAllBtn" onclick="setFilter('All')" class="rounded-lg px-3 py-1 font-semibold bg-white/10 text-white">All wallets</button>
+                <button id="filterTrackedBtn" onclick="setFilter('Tracked')" class="rounded-lg px-3 py-1 font-semibold text-slate-400 hover:text-white">Tracked</button>
+              </div>
+              <button onclick="exportCsv()" class="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-white/[0.06]">
+                Export CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="border-b border-white/[0.04] bg-white/[0.01] text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th class="py-3 px-4">Rank</th>
+                  <th class="py-3 px-4">Wallet Address & Entity</th>
+                  <th class="py-3 px-4 cursor-pointer hover:text-white" onclick="toggleSort('pnl')">24h P&L ↕</th>
+                  <th class="py-3 px-4 cursor-pointer hover:text-white" onclick="toggleSort('winRate')">Win Rate ↕</th>
+                  <th class="py-3 px-4">Primary Token</th>
+                  <th class="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="walletsTableBody" class="divide-y divide-white/[0.03]">
+                <!-- Rows injected dynamically -->
+                <tr><td colspan="6" class="py-12 text-center text-slate-500">Loading verified smart money data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right Side: Trending Tokens & Real-time Alerts -->
+        <div class="xl:col-span-4 space-y-6">
+          <!-- Trending Tokens -->
+          <div class="rounded-2xl border border-white/[0.06] bg-[#0d1320] p-5 shadow-xl">
+            <div class="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-orange-400">🔥</span>
+                <h3 class="text-xs font-bold text-white">Trending Tokens</h3>
+              </div>
+              <span class="text-[10px] text-slate-500">Most bought (24h)</span>
+            </div>
+            <div id="trendingTokensList" class="mt-3 divide-y divide-white/[0.03]">
+              <!-- Tokens injected dynamically -->
+            </div>
+          </div>
+
+          <!-- Live Whale Alerts Stream -->
+          <div class="rounded-2xl border border-white/[0.06] bg-[#0d1320] p-5 shadow-xl">
+            <div class="flex items-center justify-between border-b border-white/[0.06] pb-3">
+              <div class="flex items-center gap-2">
+                <span class="live-dot"></span>
+                <h3 class="text-xs font-bold text-white">Real-Time Alert Feed</h3>
+              </div>
+              <button onclick="clearAlerts()" class="text-[10px] text-slate-500 hover:text-white">Clear</button>
+            </div>
+            <div id="alertFeedContainer" class="mt-3 space-y-2.5 max-h-[360px] overflow-y-auto">
+              <!-- Alerts injected dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- REAL-TIME SYSTEM HEALTH DIAGNOSTICS BAR    -->
+  <!-- ========================================== -->
+  <footer class="mt-auto border-t border-white/[0.06] bg-[#080c14] py-2.5 px-4 sm:px-8 text-[10px] text-slate-400">
+    <div class="max-w-[1540px] mx-auto flex flex-wrap items-center justify-between gap-4">
+      <!-- Node Diagnostics -->
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="font-bold text-slate-300 uppercase tracking-wider">System Health:</span>
+
+        <div class="flex items-center gap-1.5" title="CoinGecko Pricing API">
+          <span id="cgStatusDot" class="h-2 w-2 rounded-full bg-emerald-400"></span>
+          <span>CoinGecko:</span>
+          <span id="cgStatusText" class="font-bold text-slate-200">Connected (32ms)</span>
+        </div>
+
+        <span class="text-slate-700">·</span>
+
+        <div class="flex items-center gap-1.5" title="Ethereum JSON-RPC Node">
+          <span id="rpcStatusDot" class="h-2 w-2 rounded-full bg-emerald-400"></span>
+          <span>Ethereum RPC:</span>
+          <span id="rpcStatusText" class="font-bold text-slate-200">Connected (18ms)</span>
+        </div>
+
+        <span class="text-slate-700">·</span>
+
+        <div>
+          <span>Tracked Wallets:</span>
+          <span id="trackedQueueCount" class="font-mono font-bold text-cyan-400">0</span>
+        </div>
+
+        <span class="text-slate-700 hidden sm:inline">·</span>
+
+        <div class="hidden sm:block">
+          <span>ETH Price:</span>
+          <span id="footerEthPrice" class="font-mono font-bold text-white">$2,640.50</span>
+        </div>
+      </div>
+
+      <!-- Buyer Admin & Demo Mode Switch -->
+      <div class="flex items-center gap-2">
+        <button id="demoModeBtn" onclick="toggleDemoMode()" class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold text-emerald-400 hover:brightness-110">
+          Demo Mode: ON
+        </button>
+        <button id="tierToggleBtn" onclick="toggleUserTier()" class="rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold text-slate-300 hover:text-white">
+          Tier: Free
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ========================================== -->
+  <!-- MODAL 1: PREMIUM PAYWALL OVERLAY           -->
+  <!-- ========================================== -->
+  <div id="paywallModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div class="w-full max-w-lg rounded-2xl border border-blue-500/30 bg-[#0e1422] p-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/[0.06] pb-4">
+        <div class="inline-flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-400">
+          ★ Institutional Alpha Gateway
+        </div>
+        <button onclick="closeModal('paywallModal')" class="text-slate-500 hover:text-white text-lg font-bold">&times;</button>
+      </div>
+      <h2 class="mt-4 text-xl font-bold text-white">Unlock Real-Time Smart Money Alpha</h2>
+      <p class="mt-1 text-xs text-slate-400">Gain zero-delay mempool signals, Tier-1 Jump/Wintermute convocation data, and automated Telegram/Discord webhooks.</p>
+
+      <div class="mt-4 space-y-2 rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 text-xs text-slate-300">
+        <div class="flex items-center gap-2">✓ <strong>Ranks 1–3 Unlocked:</strong> Jump Trading, Wintermute & Amber Group</div>
+        <div class="flex items-center gap-2">✓ <strong>Instant Webhooks:</strong> Push automated alerts to Telegram & Discord</div>
+        <div class="flex items-center gap-2">✓ <strong>Unlimited Watchlist:</strong> Zero quota constraints</div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-4">
+        <div>
+          <span class="text-[10px] text-slate-500 uppercase tracking-wider">Commercial Price</span>
+          <div class="text-xl font-extrabold text-white">$49<span class="text-xs font-normal text-slate-500">/month</span></div>
+        </div>
+        <button onclick="simulatePremiumUpgrade()" class="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 hover:brightness-110">
+          Simulate Premium Activation
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL 2: ALERT & WEBHOOK CONFIGURATION     -->
+  <!-- ========================================== -->
+  <div id="alertSettingsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div class="w-full max-w-md rounded-2xl border border-white/10 bg-[#0e1422] p-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/[0.06] pb-3">
+        <h3 class="text-sm font-bold text-white">Alerts & Webhook Integration</h3>
+        <button onclick="closeModal('alertSettingsModal')" class="text-slate-500 hover:text-white text-lg">&times;</button>
+      </div>
+      <form onsubmit="saveAlertSettings(event)" class="mt-4 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-300">Discord Webhook URL</label>
+          <input id="discordWebhookInput" type="url" placeholder="https://discord.com/api/webhooks/..." class="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.03] p-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-300">Telegram Bot Token</label>
+          <input id="telegramTokenInput" type="text" placeholder="123456:ABC-DEF..." class="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.03] p-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-300">Minimum Alert Threshold (USD)</label>
+          <input id="alertThresholdInput" type="number" value="500000" class="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.03] p-2 text-white" />
+        </div>
+        <div class="flex items-center justify-between pt-2">
+          <button type="button" onclick="testAudioChime()" class="text-cyan-400 font-semibold hover:underline">🔊 Test Audio Chime</button>
+          <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white hover:bg-blue-500">Save Config</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL 3: ADD SMART WALLET                  -->
+  <!-- ========================================== -->
+  <div id="addWalletModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div class="w-full max-w-md rounded-2xl border border-white/10 bg-[#0e1422] p-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/[0.06] pb-3">
+        <h3 class="text-sm font-bold text-white">Add Smart Wallet to Track</h3>
+        <button onclick="closeModal('addWalletModal')" class="text-slate-500 hover:text-white text-lg">&times;</button>
+      </div>
+      <form onsubmit="handleAddWallet(event)" class="mt-4 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-300">Wallet Public Address (0x...)</label>
+          <input id="newWalletAddress" type="text" required placeholder="0x71C46C607933E827112103494d55C6610a651581" class="mt-1 w-full font-mono rounded-lg border border-white/10 bg-white/[0.03] p-2 text-white focus:outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-300">Entity Name / Alias</label>
+          <input id="newWalletAlias" type="text" required placeholder="e.g. Paradigm Capital, Wintermute" class="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.03] p-2 text-white focus:outline-none focus:border-blue-500" />
+        </div>
+        <button type="submit" class="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white shadow-lg shadow-blue-600/30 hover:bg-blue-500">
+          Add & Enable Alerts
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-12 right-6 z-50 flex flex-col gap-2"></div>
+
+  <!-- ========================================== -->
+  <!-- APPLICATION ENGINE JAVASCRIPT               -->
+  <!-- ========================================== -->
+  <script>
+    // Global Application State
+    const APP_CONFIG = {
+      POLLING_INTERVAL_MS: 15000,
+      WHALE_THRESHOLD_ETH: 10,
+      DEMO_MODE: true,
+      SEED_WHALES: [
+        { address: "0x71C46C607933E827112103494d55C6610a651581", name: "Jump Crypto Whale" },
+        { address: "0x28C6c06298d514Db089934071355E5743bf21d60", name: "Binance 14 Cold" },
+        { address: "0xD6216fC6c91c1721D7438c4141d3d63b2559b119", name: "Wintermute Trading" },
+        { address: "0x3fC91A3afd380351b83601731881b2D18c647353", name: "Uniswap V3 Router" },
+        { address: "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1", name: "Alpha Arbitrage" }
+      ]
+    };
+
+    let userTier = localStorage.getItem("whalescope_tier") || "Free";
+    let isDemoMode = localStorage.getItem("whalescope_demo") !== "false"; // default true
+    let trackedAddresses = new Set(JSON.parse(localStorage.getItem("whalescope_tracked") || "[]"));
+    let allWallets = [];
+    let currentFilter = "All";
+    let sortField = "rank";
+    let sortAsc = true;
+    let ethPriceUsd = 2640.50;
+
+    const trendingTokens = [
+      { rank: 1, symbol: "ETH", name: "Ethereum", price: "$2,640.50", change: "+4.2%", color: "#627EEA" },
+      { rank: 2, symbol: "SOL", name: "Solana", price: "$182.40", change: "+8.9%", color: "#14F195" },
+      { rank: 3, symbol: "LINK", name: "Chainlink", price: "$14.75", change: "+12.1%", color: "#2A5ADA" },
+      { rank: 4, symbol: "AAVE", name: "Aave Token", price: "$158.20", change: "+5.6%", color: "#B6509E" },
+      { rank: 5, symbol: "ENA", name: "Ethena", price: "$0.48", change: "-1.8%", color: "#FFFFFF" }
+    ];
+
+    let liveAlerts = [
+      { id: 1, title: "Jump Crypto Whale", text: "Transferred 1,200 ETH ($3.15M) to Uniswap V3", time: "Just now" },
+      { id: 2, title: "Wintermute Trading", text: "Supplied 5.20M USDT to Aave V3", time: "2m ago" },
+      { id: 3, title: "Alpha Arbitrage", text: "Swapped 45.2 WBTC via Cumberland OTC", time: "5m ago" }
+    ];
+
+    function shorten(addr) {
+      if (!addr || addr.length < 10) return addr || "0x00...0000";
+      return addr.slice(0, 6) + "..." + addr.slice(-4);
+    }
+
+    // Audio chime synthesis
+    function testAudioChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+        showToast("Synthesized alert chime played");
+      } catch (e) {
+        showToast("Audio context unavailable");
+      }
+    }
+
+    function showToast(msg) {
+      const container = document.getElementById("toastContainer");
+      const toast = document.createElement("div");
+      toast.className = "flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e1422] px-4 py-3 text-xs text-white shadow-2xl transition transform translate-y-2";
+      toast.innerHTML = `<span class="live-dot !bg-blue-400"></span> <span>${msg}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.remove();
+      }, 3500);
+    }
+
+    // Fetch live data from backend or fallback gracefully
+    async function syncData() {
+      document.getElementById("syncStatusText").textContent = "Syncing onchain...";
+      try {
+        // 1. Fetch Wallets
+        const wRes = await fetch("/api/wallets");
+        if (wRes.ok) {
+          const wJson = await wRes.json();
+          if (wJson.wallets) {
+            allWallets = wJson.wallets;
+          }
+          if (wJson.ethPriceUsd) {
+            ethPriceUsd = wJson.ethPriceUsd;
+            document.getElementById("footerEthPrice").textContent = "$" + ethPriceUsd.toLocaleString();
+          }
+        }
+      } catch (e) {
+        // High-fidelity fallback
+        allWallets = APP_CONFIG.SEED_WHALES.map((whale, idx) => ({
+          rank: idx + 1,
+          address: whale.address,
+          alias: whale.name,
+          pnl: [42.8, 36.4, 29.1, 24.7, 18.2][idx] || 15.0,
+          winRate: [91.2, 87.5, 84.8, 82.1, 79.6][idx] || 80.0,
+          token: ["ETH", "ETH", "WBTC", "LINK", "AAVE"][idx] || "ETH",
+          tokenColor: ["#627EEA", "#627EEA", "#F7931A", "#2A5ADA", "#B6509E"][idx] || "#627EEA",
+          tracked: trackedAddresses.has(whale.address.toLowerCase()),
+          balanceUsd: [142500000, 498000000, 89500000, 25800000, 11900000][idx] || 25000000,
+          chain: "Ethereum"
+        }));
+      }
+
+      // 2. Fetch Transactions for Marquee
+      try {
+        const txRes = await fetch("/api/transactions");
+        if (txRes.ok) {
+          const txJson = await txRes.json();
+          if (txJson.transactions && txJson.transactions.length > 0) {
+            renderMarquee(txJson.transactions);
+          }
+        }
+      } catch (e) {
+        renderMarqueeFallback();
+      }
+
+      // 3. Fetch Diagnostics
+      try {
+        const hRes = await fetch("/api/health");
+        if (hRes.ok) {
+          const hJson = await hRes.json();
+          document.getElementById("rpcStatusText").textContent = `${hJson.rpcNodeStatus} (${hJson.rpcLatencyMs}ms)`;
+          document.getElementById("cgStatusText").textContent = `${hJson.coingeckoStatus} (${hJson.coingeckoLatencyMs}ms)`;
+        }
+      } catch (e) {}
+
+      renderWallets();
+      document.getElementById("syncStatusText").textContent = "Synced just now";
+      document.getElementById("trackedQueueCount").textContent = trackedAddresses.size;
+      document.getElementById("sidebarTrackedBadge").textContent = trackedAddresses.size;
+    }
+
+    function renderMarquee(txs) {
+      const track = document.getElementById("marqueeTrack");
+      const doubled = [...txs, ...txs];
+      track.innerHTML = doubled.map((tx) => `
+        <span class="inline-flex items-center gap-2 px-3">
+          <span class="font-bold ${tx.isTrackedWallet ? 'text-cyan-400' : 'text-slate-200'}">
+            ${tx.isTrackedWallet ? '★ ' : ''}${tx.action}
+          </span>
+          <span class="font-semibold text-cyan-400">${tx.value}</span>
+          <span class="text-slate-600">· ${tx.time || 'Just now'}</span>
+          <span class="text-slate-800">◆</span>
+        </span>
+      `).join("");
+    }
+
+    function renderMarqueeFallback() {
+      const mockTxs = [
+        { action: "0x71C4...1581 -> 0x3fC9...7353 (42.50 ETH)", value: "$112K", isTrackedWallet: true },
+        { action: "0x28C6...1d60 -> 0xD621...b119 (125.00 ETH)", value: "$330K", isTrackedWallet: false },
+        { action: "0xD621...b119 -> 0x71C4...1581 (88.20 ETH)", value: "$232K", isTrackedWallet: false }
+      ];
+      renderMarquee(mockTxs);
+    }
+
+    function renderWallets() {
+      const tbody = document.getElementById("walletsTableBody");
+      let list = allWallets;
+
+      if (currentFilter === "Tracked") {
+        list = list.filter(w => trackedAddresses.has(w.address.toLowerCase()));
+      }
+
+      const q = document.getElementById("globalSearchInput").value.trim().toLowerCase();
+      if (q) {
+        list = list.filter(w => w.address.toLowerCase().includes(q) || w.alias.toLowerCase().includes(q) || w.token.toLowerCase().includes(q));
+      }
+
+      list.sort((a, b) => {
+        let diff = sortField === "rank" ? a.rank - b.rank : (sortField === "pnl" ? b.pnl - a.pnl : b.winRate - a.winRate);
+        return sortAsc ? diff : -diff;
+      });
+
+      if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-12 text-center text-slate-500">No smart wallets match your search filter.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map(w => {
+        const isRestricted = (userTier !== "Premium" && !isDemoMode) && w.rank <= 3;
+        const isTracked = trackedAddresses.has(w.address.toLowerCase());
+
+        return `
+          <tr class="hover:bg-white/[0.02] transition">
+            <td class="py-3.5 px-4">
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold ${w.rank <= 3 ? 'text-blue-400' : 'text-slate-500'}">#${w.rank}</span>
+                ${isRestricted ? `<span onclick="openModal('paywallModal')" class="cursor-pointer rounded bg-blue-500/15 px-1 py-0.5 text-[8px] font-bold text-blue-400">PRO</span>` : ''}
+              </div>
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="flex items-center gap-2.5">
+                <div class="h-6 w-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center font-bold text-[10px] text-blue-400">
+                  ${w.alias.charAt(0)}
+                </div>
+                <div>
+                  <span class="font-semibold text-white block ${isRestricted ? 'cursor-pointer' : ''}" onclick="${isRestricted ? "openModal('paywallModal')" : ''}">${w.alias}</span>
+                  <span class="font-mono text-[10px] text-slate-500">${shorten(w.address)}</span>
+                </div>
+              </div>
+            </td>
+            <td class="py-3.5 px-4 font-bold ${w.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+              ${w.pnl >= 0 ? '+' : ''}${w.pnl}%
+            </td>
+            <td class="py-3.5 px-4">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-slate-300">${w.winRate}%</span>
+                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div class="h-full bg-blue-500" style="width: ${w.winRate}%"></div>
+                </div>
+              </div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="rounded bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold text-slate-300">${w.token}</span>
+            </td>
+            <td class="py-3.5 px-4 text-right">
+              <button
+                onclick="toggleTrackWallet('${w.address}')"
+                class="rounded-lg px-2.5 py-1 text-[10px] font-bold transition ${isTracked ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'border border-white/10 text-slate-400 hover:text-white'}"
+              >
+                ${isTracked ? 'Alert On' : 'Track +'}
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function toggleTrackWallet(addr) {
+      const lower = addr.toLowerCase();
+      const target = allWallets.find(w => w.address.toLowerCase() === lower);
+
+      if ((userTier !== "Premium" && !isDemoMode) && target && target.rank <= 3) {
+        openModal("paywallModal");
+        showToast(`Rank #${target.rank} (${target.alias}) is reserved for Pro members.`);
+        return;
+      }
+
+      if (trackedAddresses.has(lower)) {
+        trackedAddresses.delete(lower);
+        showToast("Tracking disabled for " + (target?.alias || shorten(addr)));
+      } else {
+        trackedAddresses.add(lower);
+        testAudioChime();
+        showToast("Tracking active: Push and webhook alerts enabled for " + (target?.alias || shorten(addr)));
+      }
+
+      localStorage.setItem("whalescope_tracked", JSON.stringify([...trackedAddresses]));
+      renderWallets();
+      document.getElementById("trackedQueueCount").textContent = trackedAddresses.size;
+      document.getElementById("sidebarTrackedBadge").textContent = trackedAddresses.size;
+    }
+
+    function renderTrending() {
+      const container = document.getElementById("trendingTokensList");
+      container.innerHTML = trendingTokens.map(t => `
+        <div class="flex items-center justify-between py-2 text-xs">
+          <div class="flex items-center gap-2.5">
+            <span class="text-[10px] font-bold text-slate-500 w-3">#${t.rank}</span>
+            <span class="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style="background: ${t.color}">${t.symbol.charAt(0)}</span>
+            <div>
+              <span class="font-bold text-white block">${t.symbol}</span>
+              <span class="text-[10px] text-slate-500">${t.name}</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="font-bold text-white block">${t.price}</span>
+            <span class="text-[10px] font-semibold text-emerald-400">${t.change}</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderAlerts() {
+      const container = document.getElementById("alertFeedContainer");
+      container.innerHTML = liveAlerts.map(a => `
+        <div class="rounded-xl border border-white/[0.04] bg-white/[0.02] p-2.5 hover:bg-white/[0.04] transition">
+          <div class="flex items-center justify-between text-[10px]">
+            <span class="font-bold text-cyan-400">${a.title}</span>
+            <span class="text-slate-500">${a.time}</span>
+          </div>
+          <p class="mt-1 text-xs text-slate-300 leading-snug">${a.text}</p>
+        </div>
+      `).join("");
+    }
+
+    function clearAlerts() {
+      liveAlerts = [];
+      renderAlerts();
+      showToast("Alert feed cleared");
+    }
+
+    function setFilter(f) {
+      currentFilter = f;
+      document.getElementById("filterAllBtn").className = f === "All" ? "rounded-lg px-3 py-1 font-semibold bg-white/10 text-white" : "rounded-lg px-3 py-1 font-semibold text-slate-400 hover:text-white";
+      document.getElementById("filterTrackedBtn").className = f === "Tracked" ? "rounded-lg px-3 py-1 font-semibold bg-white/10 text-white" : "rounded-lg px-3 py-1 font-semibold text-slate-400 hover:text-white";
+      renderWallets();
+    }
+
+    function filterByTracked() {
+      setFilter("Tracked");
+      showToast("Filtered by tracked wallets");
+    }
+
+    function toggleSort(field) {
+      if (sortField === field) {
+        sortAsc = !sortAsc;
+      } else {
+        sortField = field;
+        sortAsc = field === "rank";
+      }
+      renderWallets();
+    }
+
+    function handleSearch(val) {
+      renderWallets();
+    }
+
+    function toggleDemoMode() {
+      isDemoMode = !isDemoMode;
+      localStorage.setItem("whalescope_demo", isDemoMode);
+      document.getElementById("demoModeBtn").textContent = "Demo Mode: " + (isDemoMode ? "ON" : "OFF");
+      document.getElementById("demoModeBtn").className = isDemoMode
+        ? "rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold text-emerald-400"
+        : "rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold text-slate-500";
+      showToast(isDemoMode ? "Demo Mode ON: All Alpha features unlocked" : "Demo Mode OFF: Tier restrictions engaged");
+      renderWallets();
+    }
+
+    function toggleUserTier() {
+      userTier = userTier === "Premium" ? "Free" : "Premium";
+      localStorage.setItem("whalescope_tier", userTier);
+      document.getElementById("tierToggleBtn").textContent = "Tier: " + userTier;
+      document.getElementById("headerTierText").textContent = userTier === "Premium" ? "Pro member" : "Free tier";
+      showToast(`Switched user access tier to: ${userTier}`);
+      renderWallets();
+    }
+
+    function simulatePremiumUpgrade() {
+      userTier = "Premium";
+      localStorage.setItem("whalescope_tier", "Premium");
+      document.getElementById("tierToggleBtn").textContent = "Tier: Premium";
+      document.getElementById("headerTierText").textContent = "Pro member";
+      closeModal("paywallModal");
+      showToast("🎉 Premium Alpha Sentinel Activated! All restricted alpha unlocked.");
+      renderWallets();
+    }
+
+    function exportCsv() {
+      if (userTier !== "Premium" && !isDemoMode) {
+        openModal("paywallModal");
+        showToast("CSV Ledger exports require Alpha Sentinel Pro.");
+        return;
+      }
+      const rows = allWallets.map(w => [w.rank, `"${w.alias}"`, `"${w.address}"`, w.pnl, w.winRate, w.token, w.balanceUsd]);
+      const csv = ["Rank,Alias,Address,24h_PnL,WinRate,Token,BalanceUSD", ...rows.map(r => r.join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `whalescope_ledger_${Date.now()}.csv`;
+      link.click();
+      showToast("Exported active ledger to CSV");
+    }
+
+    function handleAddWallet(e) {
+      e.preventDefault();
+      const addr = document.getElementById("newWalletAddress").value.trim();
+      const alias = document.getElementById("newWalletAlias").value.trim();
+      if (!addr || !alias) return;
+
+      allWallets.push({
+        rank: allWallets.length + 1,
+        address: addr,
+        alias: alias,
+        pnl: 22.4,
+        winRate: 85.0,
+        token: "ETH",
+        tokenColor: "#627EEA",
+        tracked: true,
+        balanceUsd: 15000000,
+        chain: "Ethereum"
+      });
+
+      trackedAddresses.add(addr.toLowerCase());
+      localStorage.setItem("whalescope_tracked", JSON.stringify([...trackedAddresses]));
+      closeModal("addWalletModal");
+      showToast(`Added and tracking ${alias} (${shorten(addr)})`);
+      renderWallets();
+    }
+
+    function saveAlertSettings(e) {
+      e.preventDefault();
+      const webhook = document.getElementById("discordWebhookInput").value.trim();
+      if (webhook && userTier !== "Premium" && !isDemoMode) {
+        openModal("paywallModal");
+        showToast("External webhook delivery requires an active Pro license.");
+        return;
+      }
+      closeModal("alertSettingsModal");
+      showToast("Alert webhook settings saved successfully!");
+    }
+
+    // Modal Helpers
+    function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+    function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+    function toggleSidebar() { document.getElementById("sidebar").classList.toggle("-translate-x-full"); }
+    function toggleProfileDropdown() { document.getElementById("profileDropdown").classList.toggle("hidden"); }
+    function setActiveNav(name) { showToast("Viewing " + name); }
+
+    // Keyboard shortcut ⌘K
+    window.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        openModal("paywallModal");
+      }
+      if (e.key === "Escape") {
+        document.querySelectorAll("[id$='Modal']").forEach(m => m.classList.add("hidden"));
+        document.getElementById("profileDropdown").classList.add("hidden");
+      }
+    });
+
+    // Initial Execution
+    syncData();
+    renderTrending();
+    renderAlerts();
+    setInterval(syncData, APP_CONFIG.POLLING_INTERVAL_MS);
+  </script>
+</body>
+</html>
+
