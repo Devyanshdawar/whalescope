@@ -1,7 +1,12 @@
 {
-  "name": "figma-make-app",
-  "private": true,
-  "version": "1.0.0",
+  "name": "whalescope",
+  "version": "2.5.0",
+  "description": "Institutional-grade real-time crypto whale watcher, mempool stream listener, and smart money analytics platform.",
+  "author": "Devyansh Dawar <devyanshdawar2986@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devyanshdawar/whalescope.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +16,17 @@
     "preview": "vite preview",
     "format": "oxfmt"
   },
+  "keywords": [
+    "crypto",
+    "whale-watcher",
+    "ethereum",
+    "web3",
+    "blockchain",
+    "mempool",
+    "smart-money",
+    "react19",
+    "tailwind"
+  ],
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
